@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <About>
+    <Summary>Everyday Minecraft life: survival</Summary>
+  </About>
+
+
+	<ModSettings>
+		<MsPerTick>32</MsPerTick>
+		<PrioritiseOffscreenRendering>false</PrioritiseOffscreenRendering>
+	</ModSettings>
+
+  <ServerSection>
+		<ServerInitialConditions>
+      <Time>
+        <StartTime>6000</StartTime>
+        <AllowPassageOfTime>false</AllowPassageOfTime>
+      </Time>
+      <Weather>clear</Weather>
+    </ServerInitialConditions>
+    <ServerHandlers>
+      <FileWorldGenerator src="/content/predictive-coding/environments" forceReset="true" />
+    </ServerHandlers>
+  </ServerSection>
+
+  <AgentSection mode="Survival">
+    <Name>Player990</Name>
+    <AgentStart>
+      <Placement x="7.5" y="5.0" z="0.5"/>
+    </AgentStart>
+    <AgentHandlers>
+			<ContinuousMovementCommands/>
+      <AbsoluteMovementCommands/>
+			<ObservationFromFullStats/>
+			<ObservationFromGrid>
+        <Grid absoluteCoords="true" name="board">
+          <min x="-20" y="4" z="-30"/>
+          <max x="20" y="4" z="35"/>
+        </Grid>
+      </ObservationFromGrid>
+
+      <VideoProducer want_depth="false">
+        <Width>64</Width>
+        <Height>64</Height>
+      </VideoProducer>
+    </AgentHandlers>            
+  </AgentSection>
+</Mission>
