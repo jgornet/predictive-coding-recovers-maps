@@ -1,0 +1,13 @@
+matplotlib
+numpy
+torch
+torchvision
+seaborn
+scikit-learn
+scipy
+tqdm
+Pillow
+xformers
+scikit-images
+networkx
+rich
