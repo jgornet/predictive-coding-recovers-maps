@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/696941025.svg)](https://zenodo.org/doi/10.5281/zenodo.11287438)
+
 # Predictive Coding Neural Network for Constructing Cognitive Maps
 
 Welcome to the official GitHub repository accompanying our latest research paper. Our work dives deep into the cognitive processes humans employ to understand their surroundings and positions themselves in space. This repository contains the implementation and details of the novel framework we've introduced, leveraging the versatility of predictive coding in constructing spatial maps.
