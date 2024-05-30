@@ -350,8 +350,9 @@ def generate_latents(
         batch = images[bsz * idx : bsz * (idx + 1)]
         with torch.no_grad():
             if isinstance(model, Autoencoder):
-                B, L, C, H, W = batch.shape
-                batch = batch.reshape(B * L, C, H, W)
+                if len(batch.shape) > 4:
+                    B, L, C, H, W = batch.shape
+                    batch = batch.reshape(B * L, C, H, W)
             features = model.get_latents(batch)
             latents.append(features.cpu())
     latents = torch.cat(latents, dim=0).numpy()

@@ -27,6 +27,12 @@ This repository contains the codebase, sample environments, and the datasets use
 Thank you for your interest in our work. We eagerly await the community's feedback, collaborations, and future contributions to this exciting domain.
 
 ### Notebooks
+`environment.ipynb`: [![Open in Google Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jgornet/predictive-coding-recovers-maps/blob/main/notebooks/environment.ipynb): 
+In this Google Colab notebook, we will be setting up the Malmo framework, a platform designed to harness the rich environment of Minecraft for research in artificial intelligence.
+
+`train.ipynb`: [![Open in Google Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jgornet/predictive-coding-recovers-maps/blob/main/notebooks/train.ipynb)
+In this Google Colab notebook, we detail the procedure for training a predictive coding and autoencoding neural network using a dataset derived from a Minecraft environment.
+
 `predictive_coding.ipynb`: [![Open in Google Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jgornet/predictive-coding-recovers-maps/blob/main/notebooks/predictive_coding.ipynb)
 In this Google Colab notebook, we apply a pre-trained predictive coding neural network to a dataset containing observations from an agent navigating the Minecraft environment.
 

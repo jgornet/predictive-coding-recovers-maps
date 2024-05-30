@@ -4,6 +4,8 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 import numpy as np
 import math
+from xformers.ops import memory_efficient_attention as sdpa_attention
+from xformers.ops import LowerTriangularMask
 
 
 class MultiHeadAttention(nn.Module):
@@ -36,6 +38,7 @@ class MultiHeadAttention(nn.Module):
         - **output** (batch, output_len, dimensions): tensor containing the attended output features.
         - **attn** (batch * num_heads, v_len): tensor containing the attention (alignment) from the encoder outputs.
     """
+
     def __init__(self, d_model: int = 512, num_heads: int = 2):
         super(MultiHeadAttention, self).__init__()
 
@@ -43,18 +46,19 @@ class MultiHeadAttention(nn.Module):
 
         self.d_head = int(d_model / num_heads)
         self.num_heads = num_heads
-        self.scaled_dot_attn = ScaledDotProductAttention(self.d_head)
-        self.query_proj = nn.Conv2d(d_model, self.d_head * num_heads, kernel_size=1, bias=False)
-        self.key_proj = nn.Conv2d(d_model, self.d_head * num_heads, kernel_size=1, bias=False)
-        self.value_proj = nn.Conv2d(d_model, self.d_head * num_heads, kernel_size=1, bias=False)
+        self.query_proj = nn.Conv2d(
+            d_model, self.d_head * num_heads, kernel_size=1, bias=False
+        )
+        self.key_proj = nn.Conv2d(
+            d_model, self.d_head * num_heads, kernel_size=1, bias=False
+        )
+        self.value_proj = nn.Conv2d(
+            d_model, self.d_head * num_heads, kernel_size=1, bias=False
+        )
 
     def forward(
-            self,
-            query: Tensor,
-            key: Tensor,
-            value: Tensor,
-            mask: Optional[Tensor] = None
-    ) -> Tuple[Tensor, Tensor]:
+        self, query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor] = None
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         batch_size = value.size(0)
         channels = value.size(2)
         height = value.size(3)
@@ -62,7 +66,9 @@ class MultiHeadAttention(nn.Module):
 
         query = query.reshape(-1, channels, height, width)
         query = self.query_proj(query)
-        query = query.reshape(batch_size, -1, self.num_heads, self.d_head, height, width)
+        query = query.reshape(
+            batch_size, -1, self.num_heads, self.d_head, height, width
+        )
 
         key = key.reshape(-1, channels, height, width)
         key = self.key_proj(key)
@@ -70,55 +76,82 @@ class MultiHeadAttention(nn.Module):
 
         value = value.reshape(-1, channels, height, width)
         value = self.value_proj(value)
-        value = value.reshape(batch_size, -1, self.num_heads, self.d_head, height, width)
+        value = value.reshape(
+            batch_size, -1, self.num_heads, self.d_head, height, width
+        )
 
-        query = query.permute(2, 0, 1, 3, 4, 5).contiguous().view(batch_size * self.num_heads, -1, self.d_head, height, width)  # BNxQ_LENxD
-        key = key.permute(2, 0, 1, 3, 4, 5).contiguous().view(batch_size * self.num_heads, -1, self.d_head, height, width)      # BNxK_LENxD
-        value = value.permute(2, 0, 1, 3, 4, 5).contiguous().view(batch_size * self.num_heads, -1, self.d_head, height, width)  # BNxV_LENxD
+        query = query.contiguous().view(
+            batch_size, -1, self.num_heads, self.d_head * height * width
+        )
+        key = key.contiguous().view(
+            batch_size, -1, self.num_heads, self.d_head * height * width
+        )
+        value = value.contiguous().view(
+            batch_size, -1, self.num_heads, self.d_head * height * width
+        )
 
-        # if mask is not None:
-            # mask = mask.unsqueeze(1).repeat(1, self.num_heads, 1, 1)  # BxNxQ_LENxK_LEN
-
-        context, attn = self.scaled_dot_attn(query, key, value, mask)
-
-        context = context.view(self.num_heads, batch_size, -1, self.d_head, height, width)  # Nx(B)xQ_LENxD
-        context = context.permute(1, 2, 0, 3, 4, 5).contiguous().view(batch_size, -1, self.num_heads * self.d_head, height, width)  # BxTxND
-
-        return context, attn
-
-
-class ScaledDotProductAttention(nn.Module):
-    """
-    Scaled Dot-Product Attention proposed in "Attention Is All You Need"
-    Compute the dot products of the query with all keys, divide each by sqrt(dim),
-    and apply a softmax function to obtain the weights on the values
-    Args: dim, mask
-        dim (int): dimention of attention
-        mask (torch.Tensor): tensor containing indices to be masked
-    Inputs: query, key, value, mask
-        - **query** (batch, q_len, d_model): tensor containing projection vector for decoder.
-        - **key** (batch, k_len, d_model): tensor containing projection vector for encoder.
-        - **value** (batch, v_len, d_model): tensor containing features of the encoded input sequence.
-        - **mask** (-): tensor containing indices to be masked
-    Returns: context, attn
-        - **context**: tensor containing the context vector from attention mechanism.
-        - **attn**: tensor containing the attention (alignment) from the encoder outputs.
-    """
-    def __init__(self, dim: int):
-        super(ScaledDotProductAttention, self).__init__()
-        self.sqrt_dim = np.sqrt(dim)
-
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        score = torch.einsum("b i d h w, b j d h w -> b i j", query, key) / self.sqrt_dim  # BxQ_LENxK_LEN
-
-        if mask is not None:
-            score[:, mask] = -float('Inf')
-            # score.masked_fill_(mask.view(score.size()), -float('Inf'))
-
-        attn = F.softmax(score, -1)
-        context = torch.einsum("b i j, b j d h w -> b i d h w", attn, value)  # BxQ_LENxD
+        context = sdpa_attention(query, key, value, LowerTriangularMask())
+        attn = None
+        context = context.view(
+            batch_size, -1, self.num_heads * self.d_head, height, width
+        )
 
         return context, attn
+
+
+class RotaryEncoding(nn.Module):
+    def __init__(self, in_channels, max_len=2048, base=10000, device="cuda:0"):
+        super().__init__()
+        self.in_channels = in_channels
+        self.max_len = max_len
+        self.base = base
+        self.inv_freq = 1.0 / (
+            self.base
+            ** (
+                torch.arange(0, self.in_channels, 2, dtype=torch.int64)
+                .float()
+                .to(device)
+                / self.in_channels
+            )
+        )
+        self.cache_len = 0
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.cache_len = seq_len
+        t = torch.arange(self.cache_len, device=device, dtype=torch.int64).type_as(
+            self.inv_freq
+        )
+
+        freqs = torch.outer(t, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.cos = emb.cos().to(dtype)
+        self.sin = emb.sin().to(dtype)
+
+    def forward(self, x, seq_len=None):
+        # x: [batch_dim, time_dim, num_heads, head_dim]
+        if seq_len > self.cache_len:
+            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+
+        return (
+            self.cos[:seq_len].to(dtype=x.dtype),
+            self.sin[:seq_len].to(dtype=x.dtype),
+        )
+
+
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_position_embedding(q, k, cos, sin, position_ids, unsqueeze_dim=2):
+    # q: [batch_dim, time_dim, num_heads, head_dim]
+    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
+    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
 
 
 class PositionalEncoding(nn.Module):

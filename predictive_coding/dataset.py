@@ -1,6 +1,6 @@
 from typing import List, Tuple
 from pathlib import Path
-
+from dataclasses import dataclass
 from glob import glob
 from os.path import join
 
@@ -11,6 +11,7 @@ from torchvision import transforms
 from PIL import Image
 
 from torch.utils.data import Dataset
+import torch
 
 
 class EnvironmentDataset(Dataset):
@@ -18,17 +19,19 @@ class EnvironmentDataset(Dataset):
         self.episodes = list(root.glob("*"))
         self.episodes.sort()
 
-        episode_length = len(list(self.episodes[0].glob('*')))
+        episode_length = len(list(self.episodes[0].glob("*")))
         self.sequence_length = sequence_length
         self.seq_per_epi = episode_length // sequence_length
 
-        self.transforms = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
-                [121.6697/255, 149.3242/255, 154.9510/255], 
-                [40.7521/255,  47.7267/255, 103.2739/255]
-            )
-        ])
+        self.transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    [121.6697 / 255, 149.3242 / 255, 154.9510 / 255],
+                    [40.7521 / 255, 47.7267 / 255, 103.2739 / 255],
+                ),
+            ]
+        )
 
     def __len__(self):
         return len(self.episodes * self.seq_per_epi)
@@ -41,32 +44,73 @@ class EnvironmentDataset(Dataset):
         images = [self.transforms(Image.open(fn)) for fn in fns]
         images = torch.stack(images, dim=0)
 
-        actions = torch.from_numpy(
-            np.load(join(episode, "actions.npz"))["arr_0"]
-        )
+        state = torch.from_numpy(np.load(join(episode, "state.npz"))["arr_0"])
 
-        actions[:, 0] = (actions[:, 0] - 0.135) / 0.27
-        actions[:, 1] = actions[:, 1] / 0.00378749
-        
-        state = torch.from_numpy(
-            np.load(join(episode, "state.npz"))["arr_0"]
-        )
-        
         offset = idx % (self.seq_per_epi)
         L = self.sequence_length
-        return images[L*offset:L*(offset+1)], actions[L*offset:L*(offset+1)], state[L*offset:L*(offset+1)]
+        return (
+            images[L * offset : L * (offset + 1)],
+            state[L * offset : L * (offset + 1)],
+        )
 
-def collate_fn(batch: List[Tuple[torch.Tensor]]):
-    images = [item[0] for item in batch]
-    images = torch.stack(images, dim=0)
-    images = images.to(memory_format=torch.contiguous_format).float()
 
-    actions = [item[1] for item in batch]
-    actions = torch.stack(actions, dim=0)
-    actions = actions.to(memory_format=torch.contiguous_format).float()
-    
-    state = [item[2] for item in batch]
-    state = torch.stack(state, dim=0)
-    state = state.to(memory_format=torch.contiguous_format).float()
+class CircleDataset(Dataset):
+    def __init__(self, images_fn, positions_fn, length=50, speed=1):
+        self.inputs = torch.from_numpy(np.load(images_fn))
+        H, W, C = self.inputs.shape[1:]
 
-    return images, actions, state
+        # Truncate out modulus of sequence length
+        self.inputs = self.inputs[
+            : (len(self.inputs) // (length * speed)) * (length * speed)
+        ]
+
+        # Normalize inputs
+        self.inputs = (self.inputs / 128) - 1.0
+
+        # Reshape for sequence length
+        self.inputs = self.inputs.permute((0, 3, 1, 2))
+        self.inputs = self.inputs.reshape(-1, length, speed, C, H, W)
+        self.inputs = self.inputs.permute((0, 2, 1, 3, 4, 5))
+        self.inputs = self.inputs.reshape(-1, length, C, H, W)
+
+        self.positions = torch.from_numpy(np.load(positions_fn))
+
+        # Truncate out modulus of sequence length
+        self.positions = self.positions[
+            : (len(self.positions) // (length * speed)) * (length * speed)
+        ]
+
+        # Reshape for sequence length
+        self.positions = self.positions.reshape(-1, length, speed, 3)
+        self.positions = self.positions.permute((0, 2, 1, 3))
+        self.positions = self.positions.reshape(-1, length, 3)
+
+        self.speed = speed
+
+    def __len__(self):
+        return len(self.inputs)
+
+    def __getitem__(self, idx):
+        _idx = (idx * self.speed) % len(self.inputs) + idx // len(self.inputs)
+        return (self.inputs[_idx], self.positions[_idx])
+
+
+@dataclass
+class TensorDataset(Dataset):
+    images: torch.Tensor
+    positions: torch.Tensor
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.images[idx], self.positions[idx]
+
+
+def collate_fn(batch):
+    images = torch.stack([sample[0] for sample in batch], dim=0)
+    positions = torch.stack([sample[1] for sample in batch], dim=0)
+    return (
+        images.to(memory_format=torch.contiguous_format).float(),
+        positions.to(memory_format=torch.contiguous_format).float(),
+    )

@@ -19,7 +19,7 @@
       <Weather>clear</Weather>
     </ServerInitialConditions>
     <ServerHandlers>
-      <FileWorldGenerator src="/content/predictive-coding/environments" forceReset="true" />
+      <FileWorldGenerator src="/content/predictive-coding-recovers-maps/environments/Natural-Environment" forceReset="true" />
     </ServerHandlers>
   </ServerSection>
 
