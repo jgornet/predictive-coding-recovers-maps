@@ -1,0 +1,17 @@
+autoencoder-circle.ckpt
+autoencoder-circle-images.npy
+autoencoder-circle-positions.npy
+autoencoder.ckpt
+autoencoder-environment-images.npy
+autoencoder-environment-positions.npy
+autoencoder-images.npy
+autoencoder-path-images.npy
+autoencoder-path-positions.npy
+predictive-coder-circle.ckpt
+predictive-coder-circle-images.npy
+predictive-coder-circle-positions.npy
+predictive-coder-environment-images.npy
+predictive-coder-environment-positions.npy
+predictive-coder-path-images.npy
+predictive-coder-path-positions.npy
+predictive_coding.ckpt
