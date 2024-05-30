@@ -8,6 +8,6 @@ scipy
 tqdm
 Pillow
 xformers
-scikit-images
+scikit-image
 networkx
 rich
