@@ -20,6 +20,7 @@ from sklearn.linear_model import LinearRegression
 from scipy.optimize import minimize
 from tqdm.auto import tqdm
 
+from .models.encoder_decoder import Autoencoder, PredictiveCoder
 
 Color = np.ndarray
 DistFn = Callable[[np.ndarray, np.ndarray], np.ndarray]
@@ -132,24 +133,24 @@ class Lambda(nn.Module):
 class PositionDecoder:
     batch_size: int = 512
 
-    def __init__(self, device: str = "cuda"):
+    def __init__(self, in_dim: int = 128, device: str = "cuda"):
         self.device = device
         self.net = nn.Sequential(
-            nn.Conv2d(128, 256, 3, padding=1),
+            nn.Conv2d(in_dim, 256, 3, padding=1),
             nn.MaxPool2d(2),
             Lambda(lambda x: x.reshape(-1, 256 * 4 * 4)),
-            nn.Linear(64 * 8 * 8, 64),
+            nn.Linear(256 * 4 * 4, 64),
             nn.ReLU(),
             nn.Linear(64, 2),
         )
         self.net.to(device)
         self.optimizer = torch.optim.AdamW(self.net.parameters(), lr=1e-4)
-        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 2000, 0.1)
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 4000, 0.1)
 
     def train(self, latents: Latents):
         inputs = torch.from_numpy(latents.latents).to(self.device)
         positions = torch.from_numpy(latents.positions).to(self.device) / 30
-        for _ in (pbar := tqdm(range(4000))):
+        for _ in (pbar := tqdm(range(8000))):
             batch_idx = np.arange(0, len(inputs))
             np.random.shuffle(batch_idx)
             batch_idx = batch_idx[
@@ -338,6 +339,24 @@ class PlaceFieldDecoder:
     @cached_property
     def predicted_distance(self) -> np.ndarray:
         return np.linalg.norm(self.predicted_vector, axis=1)
+
+
+def generate_latents(
+    model: Union[PredictiveCoder, Autoencoder], images: torch.Tensor
+) -> np.ndarray:
+    latents = []
+    bsz = 100
+    for idx in range(len(images) // bsz + 1):
+        batch = images[bsz * idx : bsz * (idx + 1)]
+        with torch.no_grad():
+            if isinstance(model, Autoencoder):
+                B, L, C, H, W = batch.shape
+                batch = batch.reshape(B * L, C, H, W)
+            features = model.get_latents(batch)
+            latents.append(features.cpu())
+    latents = torch.cat(latents, dim=0).numpy()
+
+    return latents
 
 
 def distribution_plot(
