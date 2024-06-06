@@ -348,6 +348,8 @@ def generate_latents(
     bsz = 100
     for idx in range(len(images) // bsz + 1):
         batch = images[bsz * idx : bsz * (idx + 1)]
+        if len(batch) == 0:
+            break
         with torch.no_grad():
             if isinstance(model, Autoencoder):
                 if len(batch.shape) > 4:
