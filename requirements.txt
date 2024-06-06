@@ -11,3 +11,4 @@ xformers
 scikit-image
 networkx
 rich
+av
